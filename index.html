@@ -229,7 +229,8 @@ footer.note{color:#A9AEB5;font-size:13px;text-align:center;padding:0 16px 24px}
   <div style="font-size:14px;color:#A9AEB5;margin-bottom:14px">태블릿에서 넘어온 결함입니다. 확인하고 카톡으로 보내세요.</div>
   <img id="pPhoto" alt="" style="width:100%;aspect-ratio:856/232;object-fit:cover;border-radius:14px;display:block;background:#1C2026">
   <div id="pMsg" style="margin-top:14px;padding:16px;background:#fff;color:#14171A;border-radius:14px;font-size:16px;line-height:1.7;white-space:pre-line"></div>
-  <button type="button" id="pShare" class="big" style="width:100%;height:64px;margin-top:14px;background:#FEE500;color:#191919;font-size:20px">카톡으로 보내기 (사진+문구)</button>
+  <div id="pSteps" style="display:flex;gap:8px;margin-top:14px;font-size:14px;color:#A9AEB5"><span id="pStep1">① 사진</span><span>→</span><span id="pStep2">② 문구</span><span style="margin-left:auto">카톡은 사진과 글을 따로 받아서 두 번 보냅니다</span></div>
+  <button type="button" id="pShare" class="big" style="width:100%;height:64px;margin-top:8px;background:#FEE500;color:#191919;font-size:20px"></button>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
     <button type="button" id="pCopy" class="big" style="height:52px;background:#fff;color:#174A94;border:2px solid #1F5FBF;font-size:17px">문구 복사</button>
     <button type="button" id="pSave" class="big" style="height:52px;background:#fff;color:#14171A;border:2px solid #B8BBB3;font-size:17px">사진 저장</button>
@@ -2765,31 +2766,53 @@ var qrcode = function() {
     const due = DUES[+q.get('d')] ? +q.get('d') : 1;
     return { id, text: buildMessage(id, d, due) };
   }
+  // 카톡은 사진+글을 한 번에 넘기면 글을 버림 → ① 사진, ② 문구를 차례로 공유 (공유 창은 누를 때마다 한 번)
+  let pStep = 1;
+  function renderStep() {
+    const lab = { 1: '① 사진 보내기 (카톡)', 2: '② 문구 보내기 (카톡)', 3: '처음부터 다시 보내기' };
+    $('pShare').textContent = lab[pStep];
+    $('pStep1').style.color = pStep === 1 ? '#FEE500' : '#9FE0BC';
+    $('pStep2').style.color = pStep === 2 ? '#FEE500' : pStep === 3 ? '#9FE0BC' : '#A9AEB5';
+    $('pStep1').style.fontWeight = pStep === 1 ? '700' : '400';
+    $('pStep2').style.fontWeight = pStep === 2 ? '700' : '400';
+  }
   function renderPhone() {
     const p = phoneData();
     $('pPhoto').src = PHOTO[p.id];
     $('pPhoto').alt = p.id + ' 결함 사진';
     $('pMsg').textContent = p.text;
     $('pNote').textContent = '';
+    pStep = 1;
+    renderStep();
   }
   $('pShare').addEventListener('click', async () => {
-    const p = phoneData(), file = photoFile(p.id);
-    const copied = await copyText(p.text); // 카톡이 사진만 받는 경우 채팅창에 붙여넣기
+    const p = phoneData();
+    if (pStep === 3) { pStep = 1; renderStep(); $('pNote').textContent = ''; return; }
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], text: p.text });
-        $('pNote').textContent = '보냈으면 태블릿에서 [보냄 표시]를 누르세요' + (copied ? ' (문구도 복사됨)' : '');
-        return;
-      }
-      if (navigator.share) {
-        await navigator.share({ text: p.text });
-        $('pNote').textContent = '문구를 보냈습니다. 사진은 [사진 저장] 후 따로 보내세요';
-        return;
+      if (pStep === 1) {
+        const file = photoFile(p.id);
+        if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {
+          savePhoto(p.id);
+          $('pNote').textContent = '이 휴대폰은 사진 공유가 안 돼 사진을 저장했습니다. 카톡에서 사진을 첨부한 뒤 ② 문구를 보내세요';
+        } else {
+          await navigator.share({ files: [file] });
+          $('pNote').textContent = '사진을 보냈습니다. 이어서 ② 문구를 보내세요';
+        }
+        pStep = 2;
+      } else {
+        if (navigator.share) {
+          await navigator.share({ text: p.text });
+          $('pNote').textContent = '사진과 문구를 모두 보냈습니다. 태블릿에서 [보냄 표시]를 누르세요';
+        } else {
+          const ok = await copyText(p.text);
+          $('pNote').textContent = ok ? '문구를 복사했습니다. 카톡 채팅창에 붙여넣으세요' : '문구를 길게 눌러 복사한 뒤 카톡에 붙여넣으세요';
+        }
+        pStep = 3;
       }
     } catch (err) {
-      if (err && err.name === 'AbortError') { $('pNote').textContent = '보내기를 취소했습니다'; return; }
+      $('pNote').textContent = err && err.name === 'AbortError' ? '보내기를 취소했습니다. 다시 누르세요' : '공유 창을 열지 못했습니다. [문구 복사]·[사진 저장]으로 보내세요';
     }
-    $('pNote').textContent = copied ? '공유 창이 없어 문구를 복사했습니다. [사진 저장] 후 카톡에 붙여넣으세요' : '[문구 복사]와 [사진 저장]을 눌러 카톡으로 보내세요';
+    renderStep();
   });
   $('pCopy').addEventListener('click', async () => { $('pNote').textContent = (await copyText(phoneData().text)) ? '문구를 복사했습니다' : '복사하지 못했습니다. 문구를 길게 눌러 복사하세요'; });
   $('pSave').addEventListener('click', () => savePhoto(phoneData().id));
