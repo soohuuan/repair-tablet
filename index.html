@@ -172,7 +172,7 @@ footer.note{color:#A9AEB5;font-size:13px;text-align:center;padding:0 16px 24px}
 <section class="screen" id="share" hidden style="background:var(--ground);display:flex;flex-direction:column">
   <div class="hdr">
     <div style="font-size:22px;font-weight:700">결함 확인 · 반장님께 공유</div>
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 14px;border:1px solid #3A3F45;border-radius:10px"><span style="font-size:15px;color:#A9AEB5">블록</span><span class="mono" style="font-size:20px;font-weight:700">H9999 · B04</span></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 14px;border:1px solid #3A3F45;border-radius:10px"><span style="font-size:15px;color:#A9AEB5">블록</span><span class="mono" id="shareBlock" style="font-size:20px;font-weight:700"></span></div>
     <div style="flex-grow:1"></div>
     <div style="font-size:16px;color:#D5D8DC" id="sentCount"></div>
     <div style="width:1px;height:28px;background:#3A3F45"></div>
@@ -194,7 +194,7 @@ footer.note{color:#A9AEB5;font-size:13px;text-align:center;padding:0 16px 24px}
           <div style="display:flex;flex-direction:column;gap:6px"><label for="loc" style="font-size:15px;font-weight:600">위치</label><input id="loc" style="height:48px;padding:0 14px;font-size:17px;border:2px solid #B8BBB3;border-radius:10px;color:#14171A"></div>
           <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:15px;font-weight:600">결함 종류 (검사원 판단)</div><div id="kinds" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
           <div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:15px;font-weight:600">처리 기한</div><div id="dues" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
-          <div style="font-size:15px;color:var(--gray)">받는 사람: <b>B04 작업반장 [이름]</b> (블록 담당표)</div>
+          <div style="font-size:15px;color:var(--gray)">받는 사람: <b id="toWho"></b> (블록 담당표)</div>
         </div>
         <div class="card" style="padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-height:0">
           <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:15px;font-weight:600">보낼 문구</div><div id="copied" style="font-size:14px;color:var(--green);font-weight:600"></div></div>
@@ -2678,8 +2678,17 @@ var qrcode = function() {
       box.appendChild(b);
     });
   };
-  const buildMessage = (id, d, due) => '[용접 재작업 요청] H9999 B04\n위치: ' + d.loc + '\n내용: ' + d.kind + ' (' + DESC[d.kind] + ')\n기한: '
-    + DUES[due] + '까지\n사진 첨부 · 결함번호 ' + id + '\n문의: 품질검사 [이름] [연락처]';
+  // 결함마다 실제 촬영 정보 (사진을 가져온 우리 시편 영상)
+  const META = {
+    D002: { hull: 'H9999', block: 'B25', video: 'H9999_B25_20261019_0926_0029', at: '00:00:14', src: 'D001' },
+    D004: { hull: 'H9999', block: 'B25', video: 'H9999_B25_20261019_0958_0035', at: '00:00:31', src: 'D002' },
+    D005: { hull: 'H9999', block: 'B24', video: 'H9999_B24_20261016_2016_0019', at: '00:00:02', src: 'D001' },
+  };
+  const buildMessage = (id, d, due) => {
+    const m = META[id];
+    return '[용접 재작업 요청] ' + m.hull + ' ' + m.block + '\n위치: ' + d.loc + '\n내용: ' + d.kind + ' (' + DESC[d.kind] + ')\n기한: '
+      + DUES[due] + '까지\n사진 첨부 · 결함번호 ' + id + ' (영상 ' + m.at + ')\n문의: 품질검사 [이름] [연락처]';
+  };
   const message = () => buildMessage(st.sel, st.defects[st.sel], st.due);
   function renderShare() {
     const d = st.defects[st.sel];
@@ -2705,7 +2714,9 @@ var qrcode = function() {
     });
     $('photo').src = PHOTO[st.sel];
     $('photo').alt = st.sel + ' 결함 사진: 용접 비드와 결함 표시 박스';
-    $('photoName').textContent = 'H9999_B04_20261012_1027_' + st.sel + '.jpg';
+    $('photoName').textContent = photoName(st.sel);
+    $('shareBlock').textContent = META[st.sel].hull + ' · ' + META[st.sel].block;
+    $('toWho').textContent = META[st.sel].block + ' 작업반장 [이름]';
     $('loc').value = d.loc;
     pills($('kinds'), ['언더컷', '오버랩', '블로우홀'], (n) => n === d.kind, (n) => { d.kind = n; st.copied = false; renderShare(); });
     pills($('dues'), DUES, (n, i) => i === st.due, (n, i) => { st.due = i; st.copied = false; renderShare(); });
@@ -2718,7 +2729,7 @@ var qrcode = function() {
   $('loc').addEventListener('input', (e) => { st.defects[st.sel].loc = e.target.value; st.copied = false; $('message').textContent = message(); $('copied').textContent = ''; });
   $('copyBtn').addEventListener('click', () => { try { navigator.clipboard.writeText(message()); } catch (err) {} st.copied = true; renderShare(); });
   // ⑤ 실제 공유: 휴대폰·태블릿의 공유 창(카카오톡 선택) → 사진 + 문구. 공유 창이 없으면 문구 복사 + 사진 저장
-  const photoName = (id) => 'H9999_B04_20261012_1027_' + id + '.jpg';
+  function photoName(id) { return META[id].video + '_' + META[id].src + '.jpg'; }
   function photoFile(id) {
     const b64 = PHOTO[id].split(',')[1];
     const bin = atob(b64), arr = new Uint8Array(bin.length);
